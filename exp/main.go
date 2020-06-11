@@ -1,9 +1,12 @@
 package main
 
 import (
-	"database/sql"
+	"bufio"
 	"fmt"
+	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
+	"os"
+	"strings"
 )
 
 const (
@@ -13,35 +16,45 @@ const (
 	dbname = "lenslocked_dev"
 )
 
-func main() {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=disable", host, port, user, dbname)
+type User struct {
+	gorm.Model
+	Name  string
+	Email string `gorm: "not null; unique_index"`
+}
 
-	db, err := sql.Open("postgres", psqlInfo)
+func main() {
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+		"dbname=%s sslmode=disable",
+		host, port, user, dbname)
+	db, err := gorm.Open("postgres", psqlInfo)
 	if err != nil {
 		panic(err)
 	}
 
-	var id int
-	for i := 1; i < 6; i++ {
-		// Create some fake data
-		userId := 1
-		if i > 3 {
-			userId = 2
-		}
+	fmt.Printf("Successfully connected with GORM\n")
+	defer db.Close()
+	db.LogMode(true)
+	db.AutoMigrate(&User{})
 
-		amount := 1000 * i
-		description := fmt.Sprintf("USB-C Adapter x%d", i)
-
-		err = db.QueryRow(`
-			INSERT INTO orders (user_id, amount, description)
-			VALUES ($1,$2,$3)
-			RETURNING id`,
-			userId, amount, description).Scan(&id)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Created an order with the ID:", id)
+	name, email := getInfo()
+	u := &User{
+		Name:  name,
+		Email: email,
 	}
-	db.Close()
+	if err = db.Create(u).Error; err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("%+v\n", u)
+}
+
+func getInfo() (name, email string) {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("What is your name?")
+	name, _ = reader.ReadString('\n')
+	name = strings.TrimSpace(name)
+	fmt.Println("What is your email?")
+	email, _ = reader.ReadString('\n')
+	email = strings.TrimSpace(email)
+	return name, email
 }
